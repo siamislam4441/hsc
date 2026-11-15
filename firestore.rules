@@ -1,0 +1,277 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* Authentication */
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.admin == true;
+    }
+
+    function owns(uid) {
+      return signedIn()
+        && request.auth.uid == uid;
+    }
+
+    /* Subscription Check */
+
+    function activeMember() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.subscription.active == true
+        && (
+          get(
+            /databases/$(database)/documents/users/$(request.auth.uid)
+          ).data.subscription.expiresAt == null
+          ||
+          request.time <
+          get(
+            /databases/$(database)/documents/users/$(request.auth.uid)
+          ).data.subscription.expiresAt
+        );
+    }
+
+    /* Users */
+
+    match /users/{uid} {
+
+      allow read: if owns(uid) || isAdmin();
+
+      allow create: if owns(uid)
+        && request.resource.data.keys().hasOnly([
+          'name',
+          'email',
+          'phone',
+          'createdAt',
+          'subscription'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.phone is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.subscription.active == false
+        && request.resource.data.subscription.expiresAt == null
+        && request.resource.data.subscription.keys().hasOnly([
+          'active',
+          'expiresAt'
+        ]);
+
+      /* User profile update OR Admin subscription approval */
+
+      allow update: if (
+
+        owns(uid)
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['name', 'phone'])
+        && request.resource.data.name is string
+        && request.resource.data.phone is string
+
+      ) || (
+
+        isAdmin()
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['subscription'])
+        && request.resource.data.subscription.active == true
+        && request.resource.data.subscription.approvedPaymentId is string
+        && request.resource.data.subscription.keys().hasOnly([
+          'active',
+          'expiresAt',
+          'approvedPaymentId'
+        ])
+        && (
+          request.resource.data.subscription.expiresAt == null
+          || request.resource.data.subscription.expiresAt is timestamp
+        )
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.subscription.approvedPaymentId)
+        ).data.uid == uid
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.subscription.approvedPaymentId)
+        ).data.status == 'approved'
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.subscription.approvedPaymentId)
+        ).data.approvedBy == request.auth.uid
+
+      );
+
+      allow delete: if false;
+    }
+
+    /* Payment Records */
+
+    match /payments/{paymentId} {
+
+      allow read: if signedIn()
+        && (
+          resource.data.uid == request.auth.uid
+          || isAdmin()
+        );
+
+      /* Submit payment */
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'trxid',
+          'amount',
+          'durationDays',
+          'status',
+          'createdAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.trxid is string
+        && request.resource.data.trxid.size() >= 5
+        && request.resource.data.amount is number
+        && request.resource.data.durationDays is int
+        && request.resource.data.durationDays >= 0
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && exists(
+          /databases/$(database)/documents/settings/payment
+        )
+        && request.resource.data.amount ==
+          get(
+            /databases/$(database)/documents/settings/payment
+          ).data.amount
+        && request.resource.data.durationDays ==
+          get(
+            /databases/$(database)/documents/settings/payment
+          ).data.durationDays;
+
+      /* Admin approval or rejection */
+
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && (
+
+          /* Approve */
+
+          (
+            request.resource.data.status == 'approved'
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'approvedAt',
+                'approvedBy'
+              ])
+            && request.resource.data.approvedAt == request.time
+            && request.resource.data.approvedBy == request.auth.uid
+            && getAfter(
+              /databases/$(database)/documents/users/$(resource.data.uid)
+            ).data.subscription.active == true
+            && getAfter(
+              /databases/$(database)/documents/users/$(resource.data.uid)
+            ).data.subscription.approvedPaymentId == paymentId
+          )
+
+          ||
+
+          /* Reject */
+
+          (
+            request.resource.data.status == 'rejected'
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'reviewNote',
+                'reviewedAt',
+                'reviewedBy'
+              ])
+            && request.resource.data.reviewNote is string
+            && request.resource.data.reviewNote.size() <= 300
+            && request.resource.data.reviewedAt == request.time
+            && request.resource.data.reviewedBy == request.auth.uid
+          )
+
+        );
+
+      allow delete: if false;
+    }
+
+    /* Payment Settings */
+
+    match /settings/{settingId} {
+
+      allow read: if signedIn();
+
+      allow create, update: if isAdmin()
+        && settingId == 'payment'
+        && request.resource.data.keys().hasOnly([
+          'number',
+          'amount',
+          'durationDays',
+          'updatedAt'
+        ])
+        && request.resource.data.number is string
+        && request.resource.data.number.size() >= 5
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 1
+        && request.resource.data.durationDays is int
+        && request.resource.data.durationDays >= 0
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    /* Folders */
+
+    match /folders/{folderId} {
+
+      allow read: if isAdmin() || activeMember();
+
+      allow create, update, delete: if isAdmin();
+    }
+
+    /* Files */
+
+    match /files/{fileId} {
+
+      allow read: if isAdmin() || activeMember();
+
+      allow create, update, delete: if isAdmin();
+    }
+
+    /* Support Messages */
+
+    match /support/{messageId} {
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'name',
+          'text',
+          'createdAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.name is string
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 3000
+        && request.resource.data.createdAt == request.time;
+
+      allow read: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.uid == request.auth.uid
+        );
+
+      allow delete: if isAdmin();
+
+      allow update: if false;
+    }
+  }
+}
