@@ -127,7 +127,7 @@ function errorText(e) {
     "auth/invalid-credential": "ইমেইল বা পাসওয়ার্ড সঠিক নয়।",
     "auth/email-already-in-use": "এই ইমেইল দিয়ে অ্যাকাউন্ট আছে।",
     "auth/weak-password": "কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।",
-    "auth/invalid-email": "সঠিক ইমেইল দিন.",
+    "auth/invalid-email": "সঠিক ইমেইল দিন।",
     "permission-denied": "এই কাজের অনুমতি নেই। Firebase Rules যাচাই করো।",
     "failed-precondition": "এই কাজটি সম্পন্ন করা যাচ্ছে না।",
     "unavailable": "ইন্টারনেট সংযোগ পরীক্ষা করো।"
@@ -193,7 +193,6 @@ $("resetBtn").onclick = async () => {
     if (!email) return msg("প্রথমে Email লিখুন।");
 
     await sendPasswordResetEmail(auth, email);
-
     msg("পাসওয়ার্ড রিসেটের ইমেইল পাঠানো হয়েছে।");
 
   } catch (e) {
@@ -231,22 +230,28 @@ onAuthStateChanged(auth, async u => {
 
   $("adminTab").classList.toggle("hidden", !isAdmin);
 
-  await loadProfile();
+  try {
+    await loadProfile();
 
-  loadResources();
-  loadPlan();
-  loadPayments();
-  loadSupport();
+    loadResources();
+    loadPlan();
+    loadPayments();
+    loadSupport();
 
-  if (isAdmin) {
-    loadAdminConfig();
-    loadPending();
-    loadFolders();
-    loadAdminFiles();
-    loadAdminMessages();
+    if (isAdmin) {
+      loadAdminConfig();
+      loadPending();
+      loadFolders();
+      loadAdminFiles();
+      loadAdminMessages();
+    }
+
+    showTab("home");
+
+  } catch (e) {
+    console.error(e);
+    msg(errorText(e));
   }
-
-  showTab("home");
 });
 
 /* Profile */
@@ -325,7 +330,7 @@ async function loadPlan() {
   }
 }
 
-/* Submit Payment */
+/* Payment Submission and Correction */
 
 $("submitPayment").onclick = async () => {
   const trx = $("trxid").value.trim();
@@ -336,57 +341,177 @@ $("submitPayment").onclick = async () => {
   try {
     const c = await getConfig();
 
-    await addDoc(collection(db, "payments"), {
-      uid: currentUser.uid,
-      email: currentUser.email,
-      trxid: trx,
-      amount: Number(c.amount),
-      durationDays: Number(c.durationDays),
-      status: "pending",
-      createdAt: serverTimestamp()
+    const paymentRef = doc(db, "payments", currentUser.uid);
+    const historyRef = doc(
+      collection(db, "payments", currentUser.uid, "history")
+    );
+
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(paymentRef);
+
+      // First submission
+      if (!snap.exists()) {
+        tx.set(paymentRef, {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          trxid: trx,
+          amount: Number(c.amount),
+          durationDays: Number(c.durationDays),
+          status: "pending",
+          correctionCount: 0,
+          rejectCount: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+
+        tx.set(historyRef, {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          trxid: trx,
+          action: "submitted",
+          correctionCount: 0,
+          createdAt: serverTimestamp()
+        });
+
+        return;
+      }
+
+      const p = snap.data();
+
+      if (p.status === "approved") {
+        throw new Error("পেমেন্ট Approve হয়েছে। নতুন ID দেওয়া যাবে না।");
+      }
+
+      // Correct pending ID
+      if (p.status === "pending") {
+        const count = Number(p.correctionCount || 0);
+
+        if (count >= 3) {
+          throw new Error("৩ বার ID পরিবর্তন করা হয়েছে। আর পরিবর্তন করা যাবে না।");
+        }
+
+        if (trx === p.trxid) {
+          throw new Error("নতুন Transaction ID দিন।");
+        }
+
+        tx.update(paymentRef, {
+          trxid: trx,
+          amount: Number(c.amount),
+          durationDays: Number(c.durationDays),
+          correctionCount: count + 1,
+          updatedAt: serverTimestamp()
+        });
+
+        tx.set(historyRef, {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          trxid: trx,
+          action: "corrected",
+          correctionCount: count + 1,
+          createdAt: serverTimestamp()
+        });
+
+        return;
+      }
+
+      // Resubmit after admin rejection
+      if (p.status === "rejected") {
+        if (trx === p.trxid) {
+          throw new Error("নতুন Transaction ID দিন।");
+        }
+
+        tx.update(paymentRef, {
+          trxid: trx,
+          amount: Number(c.amount),
+          durationDays: Number(c.durationDays),
+          status: "pending",
+          correctionCount: 0,
+          reviewNote: "",
+          updatedAt: serverTimestamp()
+        });
+
+        tx.set(historyRef, {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          trxid: trx,
+          action: "resubmitted",
+          correctionCount: 0,
+          createdAt: serverTimestamp()
+        });
+
+        return;
+      }
+
+      throw new Error("Payment Status সঠিক নয়।");
     });
 
     $("trxid").value = "";
-
-    msg("পেমেন্ট রিকোয়েস্ট জমা হয়েছে।");
+    msg("Transaction ID জমা হয়েছে।");
 
   } catch (e) {
+    console.error(e);
     msg(errorText(e));
   }
 };
 
-/* Payment History */
+/* User Payment History */
 
 function loadPayments() {
-  const q = query(
-    collection(db, "payments"),
-    where("uid", "==", currentUser.uid),
-    orderBy("createdAt", "desc"),
-    limit(30)
+  const paymentRef = doc(db, "payments", currentUser.uid);
+
+  unsubs.push(onSnapshot(paymentRef, snap => {
+    if (!snap.exists()) {
+      $("myPayments").innerHTML =
+        "<h3>আমার পেমেন্ট</h3> এখনো কোনো Payment Request নেই।";
+
+      $("submitPayment").disabled = false;
+      $("trxid").disabled = false;
+      return;
+    }
+
+    const p = snap.data();
+
+    $("myPayments").innerHTML = `
+      <h3>আমার পেমেন্ট</h3>
+      <div class="item">
+        বর্তমান TrxID: <b>${esc(p.trxid)}</b><br>
+        Status: <b>${esc(p.status)}</b><br>
+        Correction: ${Number(p.correctionCount || 0)}/3<br>
+        Reject Count: ${Number(p.rejectCount || 0)}<br>
+        Amount: ${Number(p.amount)} টাকা<br>
+        ${p.reviewNote ? `Reject কারণ: ${esc(p.reviewNote)}` : ""}
+      </div>
+      <h3>Transaction ID History</h3>
+      <div id="myPaymentHistory">লোড হচ্ছে...</div>
+    `;
+
+    const locked = p.status === "approved";
+
+    $("submitPayment").disabled = locked;
+    $("trxid").disabled = locked;
+
+  }, e => msg(errorText(e))));
+
+  const historyQuery = query(
+    collection(db, "payments", currentUser.uid, "history"),
+    orderBy("createdAt", "asc")
   );
 
-  unsubs.push(onSnapshot(q, s => {
-    $("myPayments").innerHTML =
-      "<h3>আমার পেমেন্ট হিস্টোরি</h3>" +
-      (
-        s.empty
-          ? "কোনো পেমেন্ট নেই।"
-          : s.docs.map(d => {
-              const x = d.data();
+  unsubs.push(onSnapshot(historyQuery, s => {
+    const el = $("myPaymentHistory");
+    if (!el) return;
 
-              return `
-                <div class="item">
-                  TrxID: ${esc(x.trxid)}
-                  | ${Number(x.amount)} টাকা
-                  | <b>${esc(x.status)}</b>
-                  <br>
-                  <span class="muted">
-                    ${niceDate(x.createdAt)}
-                  </span>
-                </div>
-              `;
-            }).join("")
-      );
+    el.innerHTML = s.docs.map(d => {
+      const h = d.data();
+
+      return `
+        <div class="item">
+          TrxID: <b>${esc(h.trxid)}</b><br>
+          Action: ${esc(h.action)}<br>
+          ${niceDate(h.createdAt)}
+        </div>
+      `;
+    }).join("") || "কোনো History নেই।";
 
   }, e => msg(errorText(e))));
 }
@@ -447,15 +572,12 @@ async function loadResources() {
           ? `
             <div class="resource-folder">
               <h3>${esc(g.name)}</h3>
-
               ${fs.map(f => `
                 <div class="item">
                   <b>${esc(f.name)}</b>
-
                   ${f.description
                     ? `<p>${esc(f.description)}</p>`
                     : ""}
-
                   <a
                     href="${esc(validUrl(f.url) ? f.url : "#")}"
                     target="_blank"
@@ -468,7 +590,6 @@ async function loadResources() {
             </div>
           `
           : "";
-
       }).join("") || "এখনো কোনো রিসোর্স যোগ করা হয়নি।";
 
   } catch (e) {
@@ -563,7 +684,6 @@ $("saveConfig").onclick = async () => {
     });
 
     msg("Payment Control সংরক্ষণ হয়েছে।");
-
     loadPlan();
 
   } catch (e) {
@@ -571,7 +691,7 @@ $("saveConfig").onclick = async () => {
   }
 };
 
-/* Admin Pending Payments */
+/* Admin Pending Payments and ID History */
 
 function loadPending() {
   if (!isAdmin) return;
@@ -583,30 +703,43 @@ function loadPending() {
     limit(100)
   );
 
-  unsubs.push(onSnapshot(q, s => {
-    $("pendingList").innerHTML =
-      s.docs.map(d => {
+  unsubs.push(onSnapshot(q, async s => {
+    try {
+      const items = await Promise.all(s.docs.map(async d => {
         const x = d.data();
+
+        const hs = await getDocs(query(
+          collection(db, "payments", d.id, "history"),
+          orderBy("createdAt", "asc")
+        ));
+
+        const history = hs.docs.map(h => {
+          const v = h.data();
+
+          return `
+            <div class="muted">
+              TrxID: ${esc(v.trxid)} |
+              ${esc(v.action)} |
+              ${niceDate(v.createdAt)}
+            </div>
+          `;
+        }).join("");
 
         return `
           <div class="item">
-            <b>${esc(x.email)}</b>
-            <br>
-            TrxID: ${esc(x.trxid)}
-            | ${Number(x.amount)} টাকা
-            | ${
-              Number(x.durationDays) === 0
-                ? "Lifetime"
-                : Number(x.durationDays) + " দিন"
-            }
-            <br>
+            <b>${esc(x.email)}</b><br>
+            UID: ${esc(x.uid)}<br>
+            Current TrxID: <b>${esc(x.trxid)}</b><br>
+            Amount: ${Number(x.amount)} টাকা<br>
+            Correction: ${Number(x.correctionCount || 0)}/3<br>
+            Reject Count: ${Number(x.rejectCount || 0)}<br>
 
-            <span class="muted">
-              ${niceDate(x.createdAt)}
-            </span>
+            <details>
+              <summary>Transaction ID History দেখুন</summary>
+              ${history || "History নেই।"}
+            </details>
 
             <br>
-
             <button class="good" data-approve="${d.id}">
               Approve
             </button>
@@ -616,20 +749,28 @@ function loadPending() {
             </button>
           </div>
         `;
-      }).join("") || "Pending payment নেই।";
+      }));
 
-    document.querySelectorAll("[data-approve]").forEach(b => {
-      b.onclick = () => review(b.dataset.approve, "approve");
-    });
+      $("pendingList").innerHTML =
+        items.join("") || "Pending payment নেই।";
 
-    document.querySelectorAll("[data-reject]").forEach(b => {
-      b.onclick = () => review(b.dataset.reject, "reject");
-    });
+      document.querySelectorAll("[data-approve]").forEach(b => {
+        b.onclick = () => review(b.dataset.approve, "approve");
+      });
+
+      document.querySelectorAll("[data-reject]").forEach(b => {
+        b.onclick = () => review(b.dataset.reject, "reject");
+      });
+
+    } catch (e) {
+      console.error(e);
+      msg(errorText(e));
+    }
 
   }, e => msg(errorText(e))));
 }
 
-/* Payment Approval - Firestore Transaction */
+/* Payment Approval and Rejection */
 
 async function review(paymentId, decision) {
   if (!isAdmin) return;
@@ -640,7 +781,6 @@ async function review(paymentId, decision) {
 
   try {
     await runTransaction(db, async tx => {
-
       const paymentRef = doc(db, "payments", paymentId);
       const paymentSnap = await tx.get(paymentRef);
 
@@ -655,7 +795,6 @@ async function review(paymentId, decision) {
       }
 
       if (decision === "approve") {
-
         const userRef = doc(db, "users", payment.uid);
         const userSnap = await tx.get(userRef);
 
@@ -692,9 +831,9 @@ async function review(paymentId, decision) {
         });
 
       } else if (decision === "reject") {
-
         tx.update(paymentRef, {
           status: "rejected",
+          rejectCount: Number(payment.rejectCount || 0) + 1,
           reviewNote: note.slice(0, 300),
           reviewedAt: serverTimestamp(),
           reviewedBy: currentUser.uid
@@ -703,7 +842,6 @@ async function review(paymentId, decision) {
       } else {
         throw new Error("সঠিক সিদ্ধান্ত নির্বাচন করো।");
       }
-
     });
 
     msg(
@@ -739,11 +877,9 @@ async function loadFolders() {
     fs.map(f => `
       <div class="item">
         ${esc(f.name)}
-
         <button class="secondary" data-edit-folder="${f.id}">
           Edit
         </button>
-
         <button class="danger" data-del-folder="${f.id}">
           Delete
         </button>
@@ -808,7 +944,6 @@ $("addFolder").onclick = async () => {
     });
 
     $("folderName").value = "";
-
     loadFolders();
 
   } catch (e) {
@@ -841,7 +976,6 @@ $("saveFile").onclick = async () => {
     $("fileDesc").value = "";
 
     msg("ফাইল যোগ হয়েছে।");
-
     loadAdminFiles();
 
   } catch (e) {
@@ -864,14 +998,11 @@ async function loadAdminFiles() {
         <div class="item">
           ${esc(x.name)}
           <br>
-
           <span class="muted">${esc(x.url)}</span>
           <br>
-
           <button class="secondary" data-edit-file="${d.id}">
             Edit
           </button>
-
           <button class="danger" data-del-file="${d.id}">
             Delete
           </button>
@@ -945,9 +1076,7 @@ function loadAdminMessages() {
           <b>
             ${esc(d.data().name || d.data().email || "User")}
           </b>
-
           <p>${esc(d.data().text)}</p>
-
           <button class="danger" data-del-message="${d.id}">
             মেসেজ মুছুন
           </button>
