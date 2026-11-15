@@ -1,70 +1,329 @@
 <!doctype html>
 <html lang="bn">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HSC Study Portal</title>
-<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box}body{margin:0;background:#0f172a;color:#e2e8f0;font-family:Poppins,'Hind Siliguri',sans-serif;min-height:100vh;padding:16px}
-.wrap{max-width:1100px;margin:auto}.card{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:20px;margin:14px 0}
-h1,h2,h3{margin:0 0 12px}p{color:#cbd5e1}.muted{color:#94a3b8;font-size:13px}
-input,textarea,select{width:100%;padding:12px;margin:6px 0 12px;border-radius:9px;border:1px solid #475569;background:#0f172a;color:#fff;font:inherit}
-button,.btn{border:0;border-radius:9px;padding:10px 14px;background:#6366f1;color:#fff;font:inherit;cursor:pointer;margin:4px 4px 4px 0}
-button.secondary{background:#475569}button.danger{background:#b91c1c}button.good{background:#047857}
-nav{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}.hidden{display:none!important}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.item{padding:14px;background:#0f172a;border:1px solid #334155;border-radius:10px;margin:8px 0;overflow-wrap:anywhere}
-.item a{color:#a5b4fc}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:150px}
-.badge{display:inline-block;padding:4px 9px;border-radius:20px;background:#334155;font-size:12px}
-#notice{padding:10px;border-radius:8px;background:#334155;margin:10px 0;white-space:pre-wrap}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-button:disabled{opacity:.55;cursor:not-allowed}.resource-folder{margin:14px 0}.resource-folder h3{color:#c4b5fd}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HSC Study Portal | স্মার্ট লার্নিং প্ল্যাটফর্ম</title>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- আধুনিক আইকনের জন্য Remix Icon CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
 </head>
-<body><main class="wrap">
-<header><div><h1>HSC Study Portal</h1><div class="muted">পড়াশোনার রিসোর্স ও সাপোর্ট</div></div><div id="who" class="muted"></div></header>
-<div id="notice" class="hidden"></div>
+<body>
+  <div class="bg-glow"></div>
+  <main class="wrap">
+    
+    <!-- Header -->
+    <header class="glass-header">
+      <div class="brand">
+        <div class="logo-box"><i class="ri-book-open-fill"></i></div>
+        <div>
+          <h1>HSC Study Portal</h1>
+          <div class="muted">স্মার্ট নোটস, লেকচার শীট ও সার্বক্ষণিক সাপোর্ট</div>
+        </div>
+      </div>
+      <div id="who" class="user-badge"></div>
+    </header>
 
-<section id="auth" class="card">
-<h2>Login / Register</h2>
-<div class="grid">
-<div><label>নাম (নতুন অ্যাকাউন্টের জন্য)</label><input id="regName" placeholder="আপনার নাম"></div>
-<div><label>Email</label><input id="email" type="email" placeholder="name@example.com" autocomplete="username"></div>
-<div><label>Password</label><input id="password" type="password" minlength="6" placeholder="কমপক্ষে ৬ অক্ষর" autocomplete="current-password"></div>
-</div>
-<button id="loginBtn">Login</button><button id="registerBtn" class="secondary">নতুন অ্যাকাউন্ট তৈরি</button><button id="resetBtn" class="secondary">Forgot Password</button>
-<p class="muted">অ্যাকাউন্ট তৈরি করার পর একই ইমেইল ও পাসওয়ার্ড দিয়ে লগইন করবে।</p>
-</section>
+    <!-- Notification Alert -->
+    <div id="notice" class="hidden"></div>
 
-<section id="app" class="hidden">
-<nav>
-<button data-tab="home">হোম</button><button data-tab="subscription">সাবস্ক্রিপশন</button><button data-tab="profile">মাই প্রোফাইল</button><button data-tab="support">সাপোর্ট চেম্বার</button><button id="adminTab" data-tab="admin" class="hidden">Admin Panel</button><button id="logoutBtn" class="danger">Logout</button>
-</nav>
-<section id="home" class="card tab"><h2>Study Resources</h2><div id="resourceList"></div></section>
-<section id="subscription" class="card tab hidden"><h2>সাবস্ক্রিপশন</h2><div id="planInfo"></div>
-<label>আপনার bKash TrxID</label><input id="trxid" maxlength="100" placeholder="TrxID লিখুন">
-<button id="submitPayment">পেমেন্টের তথ্য জমা দিন</button><div id="myPayments"></div>
-</section>
-<section id="profile" class="card tab hidden"><h2>মাই প্রোফাইল</h2>
-<label>নাম</label><input id="profileName"><label>ফোন নম্বর (ঐচ্ছিক)</label><input id="profilePhone" maxlength="20">
-<button id="saveProfile">প্রোফাইল আপডেট</button><div id="profileMeta" class="muted"></div>
-</section>
-<section id="support" class="card tab hidden"><h2>সাপোর্ট চেম্বার</h2>
-<p class="muted">সব লগইন করা সদস্য এখানে মেসেজ দেখতে ও পাঠাতে পারবে। ব্যক্তিগত তথ্য, পাসওয়ার্ড বা OTP লিখবে না।</p>
-<textarea id="supportText" rows="3" maxlength="1500" placeholder="আপনার প্রশ্ন বা মেসেজ লিখুন"></textarea><button id="sendSupport">মেসেজ পাঠান</button><div id="supportList"></div>
-</section>
-<section id="admin" class="card tab hidden"><h2>Admin Dashboard</h2>
-<div class="card"><h3>Payment Control</h3><p class="muted">মেয়াদ ০ দিন হলে Lifetime। এই সেটিং নতুন পেমেন্টে প্রযোজ্য হবে।</p>
-<label>bKash নম্বর</label><input id="cfgNumber" maxlength="30"><label>সাবস্ক্রিপশন মূল্য (টাকা)</label><input id="cfgAmount" type="number" min="1" max="100000">
-<label>মেয়াদ (দিন; ০ = মেয়াদ নেই)</label><input id="cfgDays" type="number" min="0" max="36500"><button id="saveConfig">Payment Control Save</button></div>
-<div class="card"><h3>Pending Payments</h3><div id="pendingList"></div></div>
-<div class="card"><h3>Folder Management</h3><div class="row"><input id="folderName" placeholder="নতুন ফোল্ডারের নাম"><button id="addFolder">ফোল্ডার তৈরি</button></div><div id="folderList"></div></div>
-<div class="card"><h3>File / Link Management</h3>
-<label>ফোল্ডার</label><select id="fileFolder"></select><label>ফাইলের নাম</label><input id="fileName" placeholder="যেমন: Physics 1st Paper">
-<label>ফাইল বা PDF URL</label><input id="fileUrl" placeholder="https://..."><label>বিবরণ</label><textarea id="fileDesc" rows="2"></textarea>
-<button id="saveFile">ফাইল যোগ করুন</button><div id="adminFiles"></div></div>
-<div class="card"><h3>Community Moderation</h3><p class="muted">প্রয়োজনে অনুপযুক্ত মেসেজ মুছে দিতে পারবে।</p><div id="adminMessages"></div></div>
-</section>
-</section>
-</main>
-<script type="module" src="./app.js"></script>
-</body></html>
+    <!-- Auth Section (Login / Register) -->
+    <section id="auth" class="card auth-card">
+      <div class="auth-hero">
+        <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=800&q=80" alt="HSC Students Studying">
+        <div class="hero-overlay">
+          <span class="badge accent">HSC 2026 & 2027 ব্যাচ</span>
+          <h2>তোমার HSC প্রস্তুতি হোক আরও সহজ ও গোছানো</h2>
+          <p>সেরা হ্যান্ডনোট, সাজেশন ও মেন্টর সাপোর্ট এখন এক প্ল্যাটফর্মে।</p>
+        </div>
+      </div>
+
+      <div class="auth-form-area">
+        <h2>অ্যাকাউন্টে প্রবেশ করুন</h2>
+        <div class="grid">
+          <div>
+            <label><i class="ri-user-line"></i> নাম (নতুন অ্যাকাউন্টের জন্য)</label>
+            <input id="regName" placeholder="আপনার পূর্ণ নাম লিখুন">
+          </div>
+          <div>
+            <label><i class="ri-mail-line"></i> ইমেইল অ্যাড্রেস</label>
+            <input id="email" type="email" placeholder="name@example.com" autocomplete="username">
+          </div>
+          <div>
+            <label><i class="ri-lock-line"></i> পাসওয়ার্ড</label>
+            <input id="password" type="password" minlength="6" placeholder="কমপক্ষে ৬ অক্ষর" autocomplete="current-password">
+          </div>
+        </div>
+        <div class="btn-group">
+          <button id="loginBtn" class="primary"><i class="ri-login-box-line"></i> লগইন করুন</button>
+          <button id="registerBtn" class="secondary"><i class="ri-user-add-line"></i> নতুন অ্যাকাউন্ট তৈরি</button>
+          <button id="resetBtn" class="ghost"><i class="ri-key-2-line"></i> পাসওয়ার্ড ভুলে গেছেন?</button>
+        </div>
+        <p class="muted tip-text"><i class="ri-information-line"></i> নতুন অ্যাকাউন্ট তৈরি করার পর একই ইমেইল ও পাসওয়ার্ড দিয়ে লগইন করুন।</p>
+      </div>
+    </section>
+
+    <!-- Main Application Section -->
+    <section id="app" class="hidden">
+      
+      <!-- Navigation Bar -->
+      <nav class="main-nav">
+        <button data-tab="home" class="nav-btn active"><i class="ri-home-4-line"></i> হোম ও রিসোর্স</button>
+        <button data-tab="subscription" class="nav-btn"><i class="ri-vip-crown-line"></i> সাবস্ক্রিপশন</button>
+        <button data-tab="profile" class="nav-btn"><i class="ri-user-settings-line"></i> মাই প্রোফাইল</button>
+        <button data-tab="support" class="nav-btn"><i class="ri-chat-3-line"></i> সাপোর্ট চেম্বার</button>
+        <button id="adminTab" data-tab="admin" class="nav-btn admin-nav hidden"><i class="ri-shield-star-line"></i> Admin Panel</button>
+        <button id="logoutBtn" class="danger logout-btn"><i class="ri-logout-box-r-line"></i> Logout</button>
+      </nav>
+
+      <!-- 1. Home & Study Resources Tab -->
+      <section id="home" class="card tab">
+        <div class="banner-box">
+          <div>
+            <h3><i class="ri-megaphone-line"></i> স্টাডি রিসোর্স লাইব্রেরি</h3>
+            <p id="globalAnnouncement" class="muted">নিচের ফোল্ডারগুলো থেকে তোমার প্রয়োজনীয় বিষয় ও পিডিএফ নোট ডাউনলোড করো।</p>
+          </div>
+          <div class="search-box">
+            <i class="ri-search-line"></i>
+            <input type="text" id="resourceSearch" placeholder="বিষয় বা ফাইলের নাম খুঁজুন...">
+          </div>
+        </div>
+        <div id="resourceList"></div>
+      </section>
+
+      <!-- 2. Subscription Tab -->
+      <section id="subscription" class="card tab hidden">
+        <div class="section-header">
+          <h2><i class="ri-vip-diamond-line"></i> প্রিমিয়াম সাবস্ক্রিপশন</h2>
+          <span class="badge accent">সহজ পেমেন্ট</span>
+        </div>
+        
+        <div id="planInfo" class="plan-box"></div>
+
+        <div class="payment-guide">
+          <h4><i class="ri-smartphone-line"></i> পেমেন্ট করার নিয়মাবলি:</h4>
+          <ol>
+            <li>আপনার <strong>bKash অ্যাপ</strong> থেকে <strong>Send Money</strong> অপশনে যান।</li>
+            <li>উপরে দেওয়া বিকাশ নম্বরে নির্ধারিত টাকা পাঠান।</li>
+            <li>পেমেন্ট সফল হলে প্রাপ্ত <strong>Transaction ID (TrxID)</strong> নিচের বক্সে লিখে সাবমিট করুন।</li>
+          </ol>
+        </div>
+
+        <div class="form-box">
+          <label>আপনার bKash TrxID দিন</label>
+          <div class="row">
+            <input id="trxid" maxlength="100" placeholder="যেমন: 9H7G6F5D4S">
+            <button id="submitPayment" class="good"><i class="ri-check-double-line"></i> পেমেন্ট তথ্য জমা দিন</button>
+          </div>
+        </div>
+
+        <h3 style="margin-top: 24px;"><i class="ri-history-line"></i> আপনার পেমেন্ট হিস্ট্রি</h3>
+        <div id="myPayments"></div>
+      </section>
+
+      <!-- 3. My Profile Tab -->
+      <section id="profile" class="card tab hidden">
+        <div class="profile-header">
+          <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=HSCStudent&backgroundColor=b6e3f4" alt="Student Avatar" class="avatar">
+          <div>
+            <h2>মাই প্রোফাইল</h2>
+            <p class="muted">আপনার ব্যক্তিগত তথ্য আপডেট রাখুন</p>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label>আপনার নাম</label>
+            <input id="profileName" placeholder="পূর্ণ নাম">
+          </div>
+          <div>
+            <label>ফোন নম্বর (ঐচ্ছিক)</label>
+            <input id="profilePhone" maxlength="20" placeholder="017XXXXXXXX">
+          </div>
+        </div>
+        <button id="saveProfile" class="primary"><i class="ri-save-line"></i> প্রোফাইল আপডেট করুন</button>
+        <div id="profileMeta" class="muted meta-box"></div>
+      </section>
+
+      <!-- 4. Support Chamber Tab -->
+      <section id="support" class="card tab hidden">
+        <h2><i class="ri-discuss-line"></i> কমিউনিটি সাপোর্ট চেম্বার</h2>
+        <div class="warning-box">
+          <i class="ri-shield-check-line"></i> সব লগইন করা সদস্য এখানে মেসেজ দেখতে ও পাঠাতে পারবে। নিরাপত্তার স্বার্থে ব্যক্তিগত তথ্য, পাসওয়ার্ড বা OTP লিখবেন না।
+        </div>
+        <textarea id="supportText" rows="3" maxlength="1500" placeholder="আপনার পড়াশোনা বিষয়ক প্রশ্ন বা কোনো সমস্যা এখানে লিখুন..."></textarea>
+        <button id="sendSupport" class="primary"><i class="ri-send-plane-fill"></i> মেসেজ পাঠান</button>
+        <div id="supportList" class="chat-feed"></div>
+      </section>
+
+      <!-- 5. Admin Dashboard Tab -->
+      <section id="admin" class="card tab hidden">
+        <div class="section-header">
+          <h2><i class="ri-dashboard-3-line"></i> Admin Control Center</h2>
+          <span class="badge danger">Admin Access</span>
+        </div>
+
+        <!-- Admin Quick Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <i class="ri-time-line"></i>
+            <div>
+              <span class="muted">পেন্ডিং পেমেন্ট</span>
+              <h3 id="statPending">Active</h3>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class="ri-folder-3-line"></i>
+            <div>
+              <span class="muted">রিসোর্স ফোল্ডার</span>
+              <h3 id="statFolders">Manage</h3>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class="ri-chat-check-line"></i>
+            <div>
+              <span class="muted">কমিউনিটি সাপোর্ট</span>
+              <h3 id="statSupport">Live</h3>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin Sub-Navigation -->
+        <div class="admin-subnav">
+          <button type="button" class="sub-btn active" data-sub="adm-payments">পেমেন্ট ও সেটিংস</button>
+          <button type="button" class="sub-btn" data-sub="adm-resources">ফোল্ডার ও ফাইল</button>
+          <button type="button" class="sub-btn" data-sub="adm-community">মেসেজ মডারেশন</button>
+        </div>
+
+        <!-- Sub-section 1: Payments & Config -->
+        <div id="adm-payments" class="admin-sub-content">
+          <div class="sub-card">
+            <h3><i class="ri-settings-4-line"></i> Payment Control</h3>
+            <p class="muted">মেয়াদ ০ দিন হলে Lifetime। এই সেটিং নতুন পেমেন্টে প্রযোজ্য হবে।</p>
+            <div class="grid">
+              <div>
+                <label>bKash নম্বর</label>
+                <input id="cfgNumber" maxlength="30" placeholder="01XXXXXXXXX">
+              </div>
+              <div>
+                <label>সাবস্ক্রিপশন মূল্য (টাকা)</label>
+                <input id="cfgAmount" type="number" min="1" max="100000" placeholder="500">
+              </div>
+              <div>
+                <label>মেয়াদ (দিন; ০ = Lifetime)</label>
+                <input id="cfgDays" type="number" min="0" max="36500" placeholder="365">
+              </div>
+            </div>
+            <button id="saveConfig" class="good"><i class="ri-save-3-line"></i> Payment Control Save</button>
+          </div>
+
+          <div class="sub-card">
+            <h3><i class="ri-money-dollar-circle-line"></i> Pending Payments</h3>
+            <div id="pendingList"></div>
+          </div>
+        </div>
+
+        <!-- Sub-section 2: Folders & Files -->
+        <div id="adm-resources" class="admin-sub-content hidden">
+          <div class="sub-card">
+            <h3><i class="ri-folder-add-line"></i> Folder Management</h3>
+            <div class="row">
+              <input id="folderName" placeholder="নতুন ফোল্ডারের নাম (যেমন: Physics 1st Paper)">
+              <button id="addFolder" class="primary"><i class="ri-add-line"></i> ফোল্ডার তৈরি</button>
+            </div>
+            <div id="folderList"></div>
+          </div>
+
+          <div class="sub-card">
+            <h3><i class="ri-file-add-line"></i> File / Link Management</h3>
+            <div class="grid">
+              <div>
+                <label>ফোল্ডার নির্বাচন করুন</label>
+                <select id="fileFolder"></select>
+              </div>
+              <div>
+                <label>ফাইলের নাম</label>
+                <input id="fileName" placeholder="যেমন: ভেক্টর লেকচার শীট ০১">
+              </div>
+            </div>
+            <label>ফাইল বা PDF URL (Google Drive / Direct Link)</label>
+            <input id="fileUrl" placeholder="https://drive.google.com/...">
+            <label>সংক্ষিপ্ত বিবরণ</label>
+            <textarea id="fileDesc" rows="2" placeholder="ফাইলটি সম্পর্কে কিছু লিখুন..."></textarea>
+            <button id="saveFile" class="good"><i class="ri-upload-cloud-line"></i> ফাইল যোগ করুন</button>
+            <div id="adminFiles" style="margin-top: 15px;"></div>
+          </div>
+        </div>
+
+        <!-- Sub-section 3: Community Moderation -->
+        <div id="adm-community" class="admin-sub-content hidden">
+          <div class="sub-card">
+            <h3><i class="ri-shield-user-line"></i> Community Moderation</h3>
+            <p class="muted">প্রয়োজনে অনুপযুক্ত মেসেজ মুছে দিতে পারবেন।</p>
+            <div id="adminMessages"></div>
+          </div>
+        </div>
+
+      </section>
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>© 2026 HSC Study Portal • শিক্ষার্থীদের জন্য নির্মিত ডিজিটাল লার্নিং প্ল্যাটফর্ম</p>
+    </footer>
+  </main>
+
+  <!-- UI Enhancement & Bug-fix Script (Does not conflict with app.js) -->
+  <script>
+    // 1. Active Tab Highlighting & Admin Sub-tab Switching
+    document.addEventListener('click', (e) => {
+      // Main Nav Active State
+      const navBtn = e.target.closest('.nav-btn');
+      if (navBtn && navBtn.dataset.tab) {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        navBtn.classList.add('active');
+      }
+
+      // Admin Sub-nav Switching
+      const subBtn = e.target.closest('.sub-btn');
+      if (subBtn && subBtn.dataset.sub) {
+        document.querySelectorAll('.sub-btn').forEach(b => b.classList.remove('active'));
+        subBtn.classList.add('active');
+        document.querySelectorAll('.admin-sub-content').forEach(sec => sec.classList.add('hidden'));
+        const target = document.getElementById(subBtn.dataset.sub);
+        if (target) target.classList.remove('hidden');
+      }
+    });
+
+    // 2. Live Resource Search Filter (Bug-free client-side filtering)
+    const searchInput = document.getElementById('resourceSearch');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase().trim();
+        const folders = document.querySelectorAll('.resource-folder');
+        folders.forEach(folder => {
+          const items = folder.querySelectorAll('.item');
+          let hasMatch = false;
+          items.forEach(item => {
+            const text = item.textContent.toLowerCase();
+            if (text.includes(term)) {
+              item.style.display = '';
+              hasMatch = true;
+            } else {
+              item.style.display = 'none';
+            }
+          });
+          // Hide folder if no items match and search isn't empty
+          if (items.length > 0) {
+            folder.style.display = (hasMatch || term === '') ? '' : 'none';
+          }
+        });
+      });
+    }
+  </script>
+
+  <!-- Your Existing Firebase/Backend Logic -->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
