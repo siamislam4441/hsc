@@ -6,11 +6,11 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 /* Firebase Console > Project settings > Your apps > SDK setup > Config
    নিচের placeholder-গুলো নিজের Firebase Web Config দিয়ে বদলাবে। */
 const firebaseConfig = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  messagingSenderId: "PASTE_SENDER_ID",
-  appId: "PASTE_APP_ID"
+  apiKey: "AIzaSyA9quwSDpC9bENSDIfyfN9U7kn4ZBX2RbQ",
+  authDomain: "hsc28-50fca.firebaseapp.com",
+  projectId: "hsc28-50fca",
+  messagingSenderId: "868065294221",
+  appId: "1:868065294221:web:5a95fc562bfcf15d952fc4"
 };
 const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app), functions=getFunctions(app);
 const reviewPayment=httpsCallable(functions,"reviewPayment");
