@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -17,6 +18,22 @@ service cloud.firestore {
     function owns(uid) {
       return signedIn()
         && request.auth.uid == uid;
+    }
+
+    /* Payment Settings Validation */
+
+    function paymentSettingsMatch() {
+      return exists(
+        /databases/$(database)/documents/settings/payment
+      )
+      && request.resource.data.amount ==
+        get(
+          /databases/$(database)/documents/settings/payment
+        ).data.amount
+      && request.resource.data.durationDays ==
+        get(
+          /databases/$(database)/documents/settings/payment
+        ).data.durationDays;
     }
 
     /* Subscription Check */
@@ -66,7 +83,7 @@ service cloud.firestore {
           'expiresAt'
         ]);
 
-      /* User profile update OR Admin subscription approval */
+      /* User Profile Update OR Admin Subscription Approval */
 
       allow update: if (
 
@@ -107,7 +124,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    /* Payment Records */
+    /* Payments */
 
     match /payments/{paymentId} {
 
@@ -117,9 +134,9 @@ service cloud.firestore {
           || isAdmin()
         );
 
-      /* Submit payment */
+      /* First Payment Submission */
 
-      allow create: if signedIn()
+      allow create: if owns(paymentId)
         && request.resource.data.keys().hasOnly([
           'uid',
           'email',
@@ -127,7 +144,10 @@ service cloud.firestore {
           'amount',
           'durationDays',
           'status',
-          'createdAt'
+          'correctionCount',
+          'rejectCount',
+          'createdAt',
+          'updatedAt'
         ])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.email == request.auth.token.email
@@ -137,67 +157,160 @@ service cloud.firestore {
         && request.resource.data.durationDays is int
         && request.resource.data.durationDays >= 0
         && request.resource.data.status == 'pending'
+        && request.resource.data.correctionCount == 0
+        && request.resource.data.rejectCount == 0
         && request.resource.data.createdAt == request.time
-        && exists(
-          /databases/$(database)/documents/settings/payment
+        && request.resource.data.updatedAt == request.time
+        && paymentSettingsMatch();
+
+      /* Payment Updates */
+
+      allow update: if (
+
+        /* User Corrects Pending Transaction ID */
+
+        (
+          owns(paymentId)
+          && resource.data.status == 'pending'
+          && resource.data.correctionCount < 3
+          && request.resource.data.status == 'pending'
+          && request.resource.data.trxid is string
+          && request.resource.data.trxid.size() >= 5
+          && request.resource.data.trxid != resource.data.trxid
+          && request.resource.data.correctionCount ==
+            resource.data.correctionCount + 1
+          && request.resource.data.rejectCount ==
+            resource.data.rejectCount
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              'trxid',
+              'amount',
+              'durationDays',
+              'correctionCount',
+              'updatedAt'
+            ])
+          && request.resource.data.updatedAt == request.time
+          && paymentSettingsMatch()
         )
-        && request.resource.data.amount ==
-          get(
-            /databases/$(database)/documents/settings/payment
-          ).data.amount
-        && request.resource.data.durationDays ==
-          get(
-            /databases/$(database)/documents/settings/payment
-          ).data.durationDays;
 
-      /* Admin approval or rejection */
+        ||
 
-      allow update: if isAdmin()
-        && resource.data.status == 'pending'
-        && (
+        /* User Resubmits After Admin Rejection */
 
-          /* Approve */
+        (
+          owns(paymentId)
+          && resource.data.status == 'rejected'
+          && request.resource.data.status == 'pending'
+          && request.resource.data.trxid is string
+          && request.resource.data.trxid.size() >= 5
+          && request.resource.data.trxid != resource.data.trxid
+          && request.resource.data.correctionCount == 0
+          && request.resource.data.rejectCount ==
+            resource.data.rejectCount
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              'status',
+              'trxid',
+              'amount',
+              'durationDays',
+              'correctionCount',
+              'reviewNote',
+              'updatedAt'
+            ])
+          && request.resource.data.updatedAt == request.time
+          && paymentSettingsMatch()
+        )
 
-          (
-            request.resource.data.status == 'approved'
-            && request.resource.data.diff(resource.data)
-              .affectedKeys().hasOnly([
-                'status',
-                'approvedAt',
-                'approvedBy'
-              ])
-            && request.resource.data.approvedAt == request.time
-            && request.resource.data.approvedBy == request.auth.uid
-            && getAfter(
-              /databases/$(database)/documents/users/$(resource.data.uid)
-            ).data.subscription.active == true
-            && getAfter(
-              /databases/$(database)/documents/users/$(resource.data.uid)
-            ).data.subscription.approvedPaymentId == paymentId
-          )
+        ||
 
-          ||
+        /* Admin Approves */
 
-          /* Reject */
+        (
+          isAdmin()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'approved'
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              'status',
+              'approvedAt',
+              'approvedBy'
+            ])
+          && request.resource.data.approvedAt == request.time
+          && request.resource.data.approvedBy == request.auth.uid
+          && getAfter(
+            /databases/$(database)/documents/users/$(resource.data.uid)
+          ).data.subscription.active == true
+          && getAfter(
+            /databases/$(database)/documents/users/$(resource.data.uid)
+          ).data.subscription.approvedPaymentId == paymentId
+        )
 
-          (
-            request.resource.data.status == 'rejected'
-            && request.resource.data.diff(resource.data)
-              .affectedKeys().hasOnly([
-                'status',
-                'reviewNote',
-                'reviewedAt',
-                'reviewedBy'
-              ])
-            && request.resource.data.reviewNote is string
-            && request.resource.data.reviewNote.size() <= 300
-            && request.resource.data.reviewedAt == request.time
-            && request.resource.data.reviewedBy == request.auth.uid
-          )
+        ||
 
-        );
+        /* Admin Rejects */
+
+        (
+          isAdmin()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'rejected'
+          && request.resource.data.rejectCount ==
+            resource.data.rejectCount + 1
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              'status',
+              'rejectCount',
+              'reviewNote',
+              'reviewedAt',
+              'reviewedBy'
+            ])
+          && request.resource.data.reviewNote is string
+          && request.resource.data.reviewNote.size() <= 300
+          && request.resource.data.reviewedAt == request.time
+          && request.resource.data.reviewedBy == request.auth.uid
+        )
+      );
 
       allow delete: if false;
+
+      /* Transaction ID History */
+
+      match /history/{historyId} {
+
+        allow read: if owns(paymentId) || isAdmin();
+
+        allow create: if owns(paymentId)
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'email',
+            'trxid',
+            'action',
+            'correctionCount',
+            'createdAt'
+          ])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.trxid is string
+          && request.resource.data.trxid.size() >= 5
+          && request.resource.data.action in [
+            'submitted',
+            'corrected',
+            'resubmitted'
+          ]
+          && request.resource.data.correctionCount is int
+          && request.resource.data.createdAt == request.time
+          && getAfter(
+            /databases/$(database)/documents/payments/$(paymentId)
+          ).data.trxid == request.resource.data.trxid
+          && getAfter(
+            /databases/$(database)/documents/payments/$(paymentId)
+          ).data.status == 'pending'
+          && getAfter(
+            /databases/$(database)/documents/payments/$(paymentId)
+          ).data.correctionCount ==
+            request.resource.data.correctionCount;
+
+        allow update, delete: if false;
+      }
     }
 
     /* Payment Settings */
@@ -228,18 +341,14 @@ service cloud.firestore {
     /* Folders */
 
     match /folders/{folderId} {
-
       allow read: if isAdmin() || activeMember();
-
       allow create, update, delete: if isAdmin();
     }
 
     /* Files */
 
     match /files/{fileId} {
-
       allow read: if isAdmin() || activeMember();
-
       allow create, update, delete: if isAdmin();
     }
 
@@ -270,7 +379,6 @@ service cloud.firestore {
         );
 
       allow delete: if isAdmin();
-
       allow update: if false;
     }
   }
